@@ -12,6 +12,15 @@ const models: { [key: string]: string } = {
   'gemini-flash-lite-latest': 'Flash Lite'
 };
 
+const getSafeCurrencyCode = (code?: string) => {
+    // Basic validation for a 3-letter ISO code. Case-insensitive.
+    if (code && /^[a-zA-Z]{3}$/.test(code)) {
+      return code.toUpperCase();
+    }
+    // Return a safe default if the code is invalid, null, or undefined.
+    return 'MYR';
+};
+
 interface ApiKeyManagerProps {
   apiKey: string;
   setApiKey: (key: string) => void;
@@ -320,7 +329,10 @@ const ExtractedDataDisplay: React.FC<ExtractedDataDisplayProps> = ({ data, isLoa
     </div>
   );
   
-  const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency || 'USD' });
+  const currencyFormatter = useMemo(() => new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: getSafeCurrencyCode(data.currency) 
+  }), [data.currency]);
 
   return (
     <div className="space-y-6 text-slate-800 dark:text-slate-200 h-full overflow-y-auto pr-2">
@@ -458,6 +470,15 @@ export default function App() {
 
     try {
       const data = await digitizeInvoice(imageFile, apiKey, selectedModel);
+
+      // Failsafe check for non-invoice documents
+      if (data.vendorName === 'Invalid Document') {
+        setError(data.notes || 'The uploaded image does not appear to be a valid invoice. Please try another image.');
+        setExtractedData(null);
+        setIsLoading(false);
+        return; 
+      }
+
       setExtractedData(data);
       setAiNote(data.notes || null);
 
@@ -469,7 +490,7 @@ export default function App() {
         
         // Using a small epsilon for floating point comparison
         if (difference > 0.01) {
-            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency || 'USD' });
+            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: getSafeCurrencyCode(data.currency) });
             const warningMessage = `The sum of extracted line items plus tax (${currencyFormatter.format(calculatedTotal)}) does not match the invoice total (${currencyFormatter.format(data.totalAmount)}). Please review the extracted data.`;
             setDiscrepancyWarning(warningMessage);
         }

@@ -31,6 +31,7 @@ export const digitizeInvoice = async (imageFile: File, apiKey: string, model: st
   const prompt = `You are a meticulous data entry specialist. Your task is to analyze this invoice image and extract the data into a JSON object matching the provided schema.
 
 Key Instructions:
+- **Non-Invoice Images:** If the image provided does not appear to be an invoice, receipt, or bill, you MUST respond with 'vendorName' as "Invalid Document", 'totalAmount' as 0, 'currency' as "USD", an empty 'lineItems' array, and a 'notes' field explaining that the image could not be processed as an invoice.
 - **Accuracy is critical.** Double-check every field against the image.
 - **Dates:** Must be in \`YYYY-MM-DD\` format. If \`dueDate\` is missing, omit it.
 - **Numbers:** All monetary values (\`totalAmount\`, \`taxAmount\`, \`unitPrice\`, \`amount\`) must be numbers, not strings. Do not include currency symbols.
