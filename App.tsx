@@ -1,11 +1,100 @@
-
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { digitizeInvoice } from './services/geminiService';
 import type { InvoiceData, LineItem } from './types';
-import { UploadIcon, WandIcon, ReceiptIcon, Spinner } from './components/icons';
+import { UploadIcon, WandIcon, ReceiptIcon, Spinner, KeyIcon, ChevronDownIcon } from './components/icons';
 
-// Define components inside the same file but outside the main App component
-// to prevent re-creation on every render, which preserves state and improves performance.
+const API_KEY_STORAGE_KEY = 'gemini-api-key';
+const MODEL_STORAGE_KEY = 'gemini-model-selection';
+
+const models: { [key: string]: string } = {
+  'gemini-2.5-pro': 'Pro',
+  'gemini-2.5-flash': 'Flash',
+  'gemini-flash-lite-latest': 'Flash Lite'
+};
+
+interface ApiKeyManagerProps {
+  apiKey: string;
+  setApiKey: (key: string) => void;
+}
+
+const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ apiKey, setApiKey }) => {
+  const [localApiKey, setLocalApiKey] = useState(apiKey);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    setApiKey(localApiKey);
+    localStorage.setItem(API_KEY_STORAGE_KEY, localApiKey);
+    setIsEditing(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000); 
+  };
+  
+  const handleEdit = () => {
+    setLocalApiKey(apiKey);
+    setIsEditing(true);
+  };
+  
+  if (apiKey && !isEditing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-green-700 dark:text-green-400">API Key is set</span>
+        <button onClick={handleEdit} className="text-sm font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+          Edit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="relative">
+        <KeyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <input
+          type="password"
+          value={localApiKey}
+          onChange={(e) => setLocalApiKey(e.target.value)}
+          placeholder="Enter your Gemini API Key"
+          className="w-full sm:w-72 pl-10 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400"
+          aria-label="Gemini API Key"
+        />
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={!localApiKey}
+        className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 disabled:bg-slate-400 dark:disabled:bg-slate-600"
+      >
+        {saved ? 'Saved!' : 'Save Key'}
+      </button>
+    </div>
+  );
+};
+
+interface ModelSelectorProps {
+    selectedModel: string;
+    onModelChange: (model: string) => void;
+}
+  
+const ModelSelector: React.FC<ModelSelectorProps> = ({ selectedModel, onModelChange }) => {
+    return (
+      <div className="relative">
+        <select
+          id="model-select"
+          value={selectedModel}
+          onChange={(e) => onModelChange(e.target.value)}
+          className="appearance-none w-full sm:w-40 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          aria-label="Select AI Model"
+        >
+          {Object.entries(models).map(([key, name]) => (
+            <option key={key} value={key}>{name}</option>
+          ))}
+        </select>
+        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-700 dark:text-slate-300">
+          <ChevronDownIcon className="h-4 w-4" />
+        </div>
+      </div>
+    );
+};
 
 interface FileUploadAreaProps {
   onFileSelect: (file: File) => void;
@@ -176,10 +265,28 @@ const ExtractedDataDisplay: React.FC<ExtractedDataDisplayProps> = ({ data, isLoa
 
 
 export default function App() {
+  const [apiKey, setApiKey] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [extractedData, setExtractedData] = useState<InvoiceData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+    }
+    const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (savedModel && models[savedModel]) {
+      setSelectedModel(savedModel);
+    }
+  }, []);
+
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model);
+    localStorage.setItem(MODEL_STORAGE_KEY, model);
+  };
 
   const imageUrl = useMemo(() => {
     if (imageFile) {
@@ -199,13 +306,17 @@ export default function App() {
       setError("Please upload an invoice image first.");
       return;
     }
+    if (!apiKey) {
+      setError("Please enter your Gemini API key before digitizing.");
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
     setExtractedData(null);
 
     try {
-      const data = await digitizeInvoice(imageFile);
+      const data = await digitizeInvoice(imageFile, apiKey, selectedModel);
       setExtractedData(data);
     } catch (err) {
       if (err instanceof Error) {
@@ -232,9 +343,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        <header className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-800 dark:text-white">AI Invoice Digitizer</h1>
-          <p className="mt-2 text-lg text-slate-600 dark:text-slate-400">Upload an invoice image to automatically extract key information using Gemini.</p>
+        <header className="mb-8">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
+            <div className="text-center sm:text-left">
+              <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-800 dark:text-white">AI Invoice Digitizer</h1>
+              <p className="mt-2 text-lg text-slate-600 dark:text-slate-400">Instantly extract invoice data with Gemini.</p>
+            </div>
+            <div className="flex flex-col md:flex-row items-center justify-center md:justify-end gap-4 flex-shrink-0">
+               <ModelSelector selectedModel={selectedModel} onModelChange={handleModelChange} />
+               <ApiKeyManager apiKey={apiKey} setApiKey={setApiKey} />
+            </div>
+          </div>
         </header>
 
         <main className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[70vh] min-h-[600px]">
@@ -245,8 +364,9 @@ export default function App() {
             <div className="flex-shrink-0 flex items-center justify-center gap-4">
               <button
                 onClick={handleDigitize}
-                disabled={!imageFile || isLoading}
+                disabled={!imageFile || isLoading || !apiKey}
                 className="inline-flex items-center justify-center px-8 py-3 font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-slate-400 disabled:cursor-not-allowed dark:disabled:bg-slate-600 transition-all duration-300 transform hover:scale-105"
+                title={!apiKey ? "Please save your API key first" : ""}
               >
                 {isLoading ? (
                   <>

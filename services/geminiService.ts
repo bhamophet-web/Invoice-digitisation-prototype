@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { InvoiceData } from '../types';
 
@@ -20,17 +19,17 @@ const fileToGenerativePart = async (file: File) => {
   };
 };
 
-export const digitizeInvoice = async (imageFile: File): Promise<InvoiceData> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set");
+export const digitizeInvoice = async (imageFile: File, apiKey: string, model: string): Promise<InvoiceData> => {
+  if (!apiKey) {
+    throw new Error("Gemini API key is not set. Please enter your API key.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
 
   const imagePart = await fileToGenerativePart(imageFile);
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: model,
     contents: {
       parts: [
         { text: "Analyze this invoice image and extract the key information. Ensure all monetary values are numbers. The currency should be the 3-letter ISO 4217 code (e.g., USD, EUR, MYR)." },
