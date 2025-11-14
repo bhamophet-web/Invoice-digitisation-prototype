@@ -28,11 +28,21 @@ export const digitizeInvoice = async (imageFile: File, apiKey: string, model: st
 
   const imagePart = await fileToGenerativePart(imageFile);
 
+  const prompt = `You are a meticulous data entry specialist. Your task is to analyze this invoice image and extract the data into a JSON object matching the provided schema.
+
+Key Instructions:
+- **Accuracy is critical.** Double-check every field against the image.
+- **Dates:** Must be in \`YYYY-MM-DD\` format. If \`dueDate\` is missing, omit it.
+- **Numbers:** All monetary values (\`totalAmount\`, \`taxAmount\`, \`unitPrice\`, \`amount\`) must be numbers, not strings. Do not include currency symbols.
+- **Currency:** Use the 3-letter ISO 4217 code (e.g., USD, EUR).
+- **Calculations:** Verify that for each line item, \`quantity * unitPrice\` equals \`amount\`. Also, verify that the sum of line items plus tax equals the \`totalAmount\`. Prioritize the values printed on the invoice if there are minor rounding differences.
+- **Missing Tax:** If no tax amount is specified, use \`0\` for \`taxAmount\`.`;
+
   const response = await ai.models.generateContent({
     model: model,
     contents: {
       parts: [
-        { text: "Analyze this invoice image and extract the key information. Ensure all monetary values are numbers. The currency should be the 3-letter ISO 4217 code (e.g., USD, EUR, MYR)." },
+        { text: prompt },
         imagePart,
       ],
     },

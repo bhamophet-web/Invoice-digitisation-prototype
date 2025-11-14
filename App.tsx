@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { digitizeInvoice } from './services/geminiService';
 import type { InvoiceData, LineItem } from './types';
-import { UploadIcon, WandIcon, ReceiptIcon, Spinner, KeyIcon, ChevronDownIcon } from './components/icons';
+import { UploadIcon, WandIcon, ReceiptIcon, Spinner, KeyIcon, ChevronDownIcon, CameraIcon } from './components/icons';
 
 const API_KEY_STORAGE_KEY = 'gemini-api-key';
 const MODEL_STORAGE_KEY = 'gemini-model-selection';
@@ -99,9 +99,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ selectedModel, onModelCha
 interface FileUploadAreaProps {
   onFileSelect: (file: File) => void;
   isLoading: boolean;
+  onUseCameraClick: () => void;
 }
 
-const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileSelect, isLoading }) => {
+const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileSelect, isLoading, onUseCameraClick }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
@@ -136,26 +137,132 @@ const FileUploadArea: React.FC<FileUploadAreaProps> = ({ onFileSelect, isLoading
     }
   };
 
-  const baseClasses = "flex flex-col items-center justify-center w-full h-full p-8 text-center border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-300";
+  const baseClasses = "flex flex-col items-center justify-center w-full p-8 text-center border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-300";
   const inactiveClasses = "border-slate-300 bg-slate-50 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700";
   const activeClasses = "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/50";
   
   return (
-    <label
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      className={`${baseClasses} ${isDragging ? activeClasses : inactiveClasses}`}
-    >
-      <UploadIcon className="w-12 h-12 text-slate-400 dark:text-slate-500 mb-4" />
-      <p className="text-lg font-semibold text-slate-700 dark:text-slate-300">
-        <span className="text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop
-      </p>
-      <p className="text-sm text-slate-500 dark:text-slate-400">PNG, JPG, or WEBP</p>
-      <input type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} disabled={isLoading} />
-    </label>
+    <div className="flex flex-col items-center justify-center w-full h-full">
+        <label
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            className={`${baseClasses} ${isDragging ? activeClasses : inactiveClasses}`}
+            >
+            <UploadIcon className="w-12 h-12 text-slate-400 dark:text-slate-500 mb-4" />
+            <p className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+                <span className="text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">PNG, JPG, or WEBP</p>
+            <input type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} disabled={isLoading} />
+        </label>
+        <div className="relative flex items-center w-full max-w-sm my-4">
+            <div className="flex-grow border-t border-slate-300 dark:border-slate-600"></div>
+            <span className="flex-shrink mx-4 text-sm font-medium text-slate-400 dark:text-slate-500">OR</span>
+            <div className="flex-grow border-t border-slate-300 dark:border-slate-600"></div>
+        </div>
+        <button
+            onClick={onUseCameraClick}
+            disabled={isLoading}
+            className="inline-flex items-center justify-center px-6 py-2 font-semibold text-indigo-600 border border-indigo-600 rounded-lg hover:bg-indigo-50 dark:text-indigo-400 dark:border-indigo-400 dark:hover:bg-indigo-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+            <CameraIcon className="w-5 h-5 mr-2 -ml-1" />
+            Use Camera
+        </button>
+    </div>
   );
+};
+
+interface CameraCaptureProps {
+    onCapture: (file: File) => void;
+    onCancel: () => void;
+}
+  
+const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCancel }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const [error, setError] = useState<string | null>(null);
+  
+    useEffect(() => {
+      const startCamera = async () => {
+        try {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+              streamRef.current = stream;
+            }
+          } else {
+            setError("Your browser does not support camera access.");
+          }
+        } catch (err) {
+          console.error("Error accessing camera:", err);
+          setError("Could not access the camera. Please check permissions.");
+        }
+      };
+  
+      startCamera();
+  
+      return () => {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+      };
+    }, []);
+  
+    const handleCapture = () => {
+      if (videoRef.current) {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        const context = canvas.getContext('2d');
+        if (context) {
+          context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const file = new File([blob], `invoice-capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+              onCapture(file);
+            }
+          }, 'image/jpeg', 0.95);
+        }
+      }
+    };
+  
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
+          <h3 className="text-lg font-bold mb-2">Camera Error</h3>
+          <p className="text-sm">{error}</p>
+          <button onClick={onCancel} className="mt-4 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700">
+            Back to Upload
+          </button>
+        </div>
+      );
+    }
+  
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+        <div className="relative w-full flex-grow bg-black rounded-t-lg overflow-hidden">
+          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
+        </div>
+        <div className="flex-shrink-0 flex items-center justify-center gap-4 p-4 w-full">
+            <button
+                onClick={handleCapture}
+                className="inline-flex items-center justify-center px-8 py-3 font-semibold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700"
+            >
+                <CameraIcon className="w-5 h-5 mr-2" />
+                Snap Photo
+            </button>
+            <button
+                onClick={onCancel}
+                className="px-6 py-3 font-semibold text-slate-700 bg-slate-200 rounded-lg hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+            >
+                Cancel
+            </button>
+        </div>
+      </div>
+    );
 };
 
 interface InvoicePreviewProps {
@@ -271,6 +378,7 @@ export default function App() {
   const [extractedData, setExtractedData] = useState<InvoiceData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
 
   useEffect(() => {
     const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
@@ -300,6 +408,11 @@ export default function App() {
     setExtractedData(null);
     setError(null);
   }, []);
+
+  const handleCapture = (file: File) => {
+    handleFileSelect(file);
+    setCameraActive(false);
+  };
 
   const handleDigitize = async () => {
     if (!imageFile) {
@@ -334,7 +447,7 @@ export default function App() {
     setExtractedData(null);
     setError(null);
     setIsLoading(false);
-    // Revoke the old object URL to free up memory
+    setCameraActive(false);
     if (imageUrl) {
         URL.revokeObjectURL(imageUrl);
     }
@@ -359,7 +472,13 @@ export default function App() {
         <main className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-[70vh] min-h-[600px]">
           <div className="flex flex-col gap-4">
             <div className="flex-grow bg-white dark:bg-slate-800/50 rounded-lg p-4 shadow-md border border-slate-200 dark:border-slate-700">
-              {imageUrl ? <InvoicePreview imageUrl={imageUrl} /> : <FileUploadArea onFileSelect={handleFileSelect} isLoading={isLoading} />}
+                {imageUrl ? (
+                    <InvoicePreview imageUrl={imageUrl} />
+                ) : cameraActive ? (
+                    <CameraCapture onCapture={handleCapture} onCancel={() => setCameraActive(false)} />
+                ) : (
+                    <FileUploadArea onFileSelect={handleFileSelect} isLoading={isLoading} onUseCameraClick={() => setCameraActive(true)} />
+                )}
             </div>
             <div className="flex-shrink-0 flex items-center justify-center gap-4">
               <button
