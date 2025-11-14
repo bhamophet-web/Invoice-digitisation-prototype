@@ -1,0 +1,5 @@
+{
+  "name": "AI Invoice Digitizer",
+  "description": "An intelligent prototype application that uses Gemini to accurately digitize and extract key information from uploaded invoice images, preparing it for database entry.",
+  "requestFramePermissions": []
+}
