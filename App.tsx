@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { digitizeInvoice } from './services/geminiService';
 import type { InvoiceData, LineItem } from './types';
-import { UploadIcon, WandIcon, ReceiptIcon, Spinner, KeyIcon, ChevronDownIcon, CameraIcon } from './components/icons';
+import { UploadIcon, WandIcon, ReceiptIcon, Spinner, KeyIcon, ChevronDownIcon, CameraIcon, AlertTriangleIcon, InformationCircleIcon } from './components/icons';
 
 const API_KEY_STORAGE_KEY = 'gemini-api-key';
 const MODEL_STORAGE_KEY = 'gemini-model-selection';
@@ -279,9 +279,11 @@ interface ExtractedDataDisplayProps {
   data: InvoiceData | null;
   isLoading: boolean;
   error: string | null;
+  discrepancyWarning: string | null;
+  aiNote: string | null;
 }
 
-const ExtractedDataDisplay: React.FC<ExtractedDataDisplayProps> = ({ data, isLoading, error }) => {
+const ExtractedDataDisplay: React.FC<ExtractedDataDisplayProps> = ({ data, isLoading, error, discrepancyWarning, aiNote }) => {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center text-slate-500 dark:text-slate-400">
@@ -322,6 +324,26 @@ const ExtractedDataDisplay: React.FC<ExtractedDataDisplayProps> = ({ data, isLoa
 
   return (
     <div className="space-y-6 text-slate-800 dark:text-slate-200 h-full overflow-y-auto pr-2">
+      {aiNote && (
+        <div className="p-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-slate-900 dark:text-blue-400 border border-blue-300 dark:border-blue-800" role="alert">
+            <div className="flex items-center">
+                <InformationCircleIcon className="w-5 h-5 mr-2" />
+                <span className="font-bold">AI Note from Invoice Analysis</span>
+            </div>
+            <p className="mt-1.5 ml-7">{aiNote}</p>
+        </div>
+      )}
+
+      {discrepancyWarning && (
+        <div className="p-4 text-sm text-amber-800 rounded-lg bg-amber-50 dark:bg-slate-900 dark:text-amber-400 border border-amber-300 dark:border-amber-800" role="alert">
+            <div className="flex items-center">
+                <AlertTriangleIcon className="w-5 h-5 mr-2" />
+                <span className="font-bold">Digitization Validation Warning</span>
+            </div>
+            <p className="mt-1.5 ml-7">{discrepancyWarning}</p>
+        </div>
+      )}
+
       <div className="p-4 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
         <h2 className="text-2xl font-bold mb-4 text-indigo-700 dark:text-indigo-400">{data.vendorName}</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -379,6 +401,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const [discrepancyWarning, setDiscrepancyWarning] = useState<string | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
 
   useEffect(() => {
     const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
@@ -407,6 +431,8 @@ export default function App() {
     setImageFile(file);
     setExtractedData(null);
     setError(null);
+    setDiscrepancyWarning(null);
+    setAiNote(null);
   }, []);
 
   const handleCapture = (file: File) => {
@@ -427,10 +453,28 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     setExtractedData(null);
+    setDiscrepancyWarning(null);
+    setAiNote(null);
 
     try {
       const data = await digitizeInvoice(imageFile, apiKey, selectedModel);
       setExtractedData(data);
+      setAiNote(data.notes || null);
+
+      // Client-side validation for totals
+      if (data && data.lineItems) {
+        const lineItemsTotal = data.lineItems.reduce((sum, item) => sum + item.amount, 0);
+        const calculatedTotal = lineItemsTotal + data.taxAmount;
+        const difference = Math.abs(calculatedTotal - data.totalAmount);
+        
+        // Using a small epsilon for floating point comparison
+        if (difference > 0.01) {
+            const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: data.currency || 'USD' });
+            const warningMessage = `The sum of extracted line items plus tax (${currencyFormatter.format(calculatedTotal)}) does not match the invoice total (${currencyFormatter.format(data.totalAmount)}). Please review the extracted data.`;
+            setDiscrepancyWarning(warningMessage);
+        }
+      }
+
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -448,6 +492,8 @@ export default function App() {
     setError(null);
     setIsLoading(false);
     setCameraActive(false);
+    setDiscrepancyWarning(null);
+    setAiNote(null);
     if (imageUrl) {
         URL.revokeObjectURL(imageUrl);
     }
@@ -510,7 +556,7 @@ export default function App() {
             </div>
           </div>
           <div className="bg-white dark:bg-slate-800/50 rounded-lg p-6 shadow-md border border-slate-200 dark:border-slate-700">
-            <ExtractedDataDisplay data={extractedData} isLoading={isLoading} error={error} />
+            <ExtractedDataDisplay data={extractedData} isLoading={isLoading} error={error} discrepancyWarning={discrepancyWarning} aiNote={aiNote} />
           </div>
         </main>
       </div>

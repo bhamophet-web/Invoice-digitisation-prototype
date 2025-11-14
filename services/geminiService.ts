@@ -35,7 +35,7 @@ Key Instructions:
 - **Dates:** Must be in \`YYYY-MM-DD\` format. If \`dueDate\` is missing, omit it.
 - **Numbers:** All monetary values (\`totalAmount\`, \`taxAmount\`, \`unitPrice\`, \`amount\`) must be numbers, not strings. Do not include currency symbols.
 - **Currency:** Use the 3-letter ISO 4217 code (e.g., USD, EUR).
-- **Calculations:** Verify that for each line item, \`quantity * unitPrice\` equals \`amount\`. Also, verify that the sum of line items plus tax equals the \`totalAmount\`. Prioritize the values printed on the invoice if there are minor rounding differences.
+- **Calculations & Verification:** Verify that for each line item, \`quantity * unitPrice\` equals \`amount\`. Also, verify that the sum of line items plus tax equals the \`totalAmount\`. If there's a significant discrepancy (more than a small rounding error), extract all values exactly as they are printed on the invoice and add a 'notes' field briefly explaining the mathematical error you found.
 - **Missing Tax:** If no tax amount is specified, use \`0\` for \`taxAmount\`.`;
 
   const response = await ai.models.generateContent({
@@ -72,6 +72,7 @@ Key Instructions:
               required: ["description", "quantity", "unitPrice", "amount"],
             },
           },
+          notes: { type: Type.STRING, description: "A note about any mathematical discrepancies or oddities found on the invoice itself (e.g., line items do not sum to the total)." },
         },
         required: ["vendorName", "invoiceNumber", "invoiceDate", "totalAmount", "lineItems", "currency"],
       },

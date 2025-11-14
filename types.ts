@@ -15,4 +15,5 @@ export interface InvoiceData {
   taxAmount: number;
   currency: string;
   lineItems: LineItem[];
+  notes?: string;
 }
